@@ -1,0 +1,8 @@
+{
+  "count": 3,
+  "list": [
+    {"id": "replay-1", "date": "2026-10-30T18:04:00Z", "playlist_id": "ranked-standard"},
+    {"id": "replay-old", "date": "2026-10-30T17:00:00Z", "playlist_id": "ranked-standard"},
+    {"id": "replay-older", "date": "2026-10-30T16:00:00Z", "playlist_id": "ranked-standard"}
+  ]
+}

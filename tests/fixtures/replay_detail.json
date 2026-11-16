@@ -1,0 +1,60 @@
+{
+  "id": "replay-1",
+  "match_guid": "match-1",
+  "rocket_league_id": "game-1",
+  "date": "2026-10-30T18:04:00Z",
+  "created": "2026-10-30T18:10:00Z",
+  "status": "ok",
+  "team_size": 3,
+  "playlist_id": "ranked-standard",
+  "playlist_name": "Ranked Standard",
+  "map_name": "DFH Stadium",
+  "duration": 312,
+  "play_duration": 312,
+  "overtime": false,
+  "blue": {
+    "name": "Synthetic Trio",
+    "goals": 3,
+    "stats": {
+      "core": {"goals": 3, "assists": 2, "saves": 7, "shots": 12, "score": 1100},
+      "boost": {"bpm": 1200, "avg_amount": 145.0, "time_zero_boost": 90.2},
+      "demo": {"inflicted": 5, "taken": 3}
+    },
+    "players": [
+      {
+        "name": "Alias A", "id": {"platform": "steam", "id": "123"}, "mvp": true,
+        "stats": {
+          "core": {"goals": 2, "assists": 1, "saves": 3, "shots": 5, "score": 520, "shooting_percentage": 40.0},
+          "boost": {"bpm": 410, "avg_amount": 48.2, "time_zero_boost": 35.4},
+          "demo": {"inflicted": 2, "taken": 1}
+        }
+      },
+      {
+        "name": "Alias B", "id": {"platform": "epic", "id": "ABC"},
+        "stats": {
+          "core": {"goals": 1, "assists": 1, "saves": 2, "shots": 4, "score": 360, "shooting_percentage": 25.0, "mvp": false},
+          "boost": {"bpm": 400, "avg_amount": 50.0, "time_zero_boost": 30.2},
+          "demo": {"inflicted": 2, "taken": 1}
+        }
+      },
+      {
+        "name": "Alias C", "id": {"platform": "psn", "id": "Example"},
+        "stats": {
+          "core": {"goals": 0, "assists": 0, "saves": 2, "shots": 3, "score": 220, "shooting_percentage": 0.0, "mvp": false},
+          "boost": {"bpm": 390, "avg_amount": 46.8, "time_zero_boost": 24.6},
+          "demo": {"inflicted": 1, "taken": 1}
+        }
+      }
+    ]
+  },
+  "orange": {
+    "name": "Synthetic Opponents",
+    "goals": 2,
+    "stats": {"core": {"goals": 2}},
+    "players": [
+      {"name": "Opponent A", "id": {"platform": "steam", "id": "901"}},
+      {"name": "Opponent B", "id": {"platform": "steam", "id": "902"}},
+      {"name": "Opponent C", "id": {"platform": "steam", "id": "903"}}
+    ]
+  }
+}

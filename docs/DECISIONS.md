@@ -1,0 +1,57 @@
+# Decisions
+
+- M0: Build milestones sequentially and stop at the first completed checkpoint, per the stopping rule.
+- M0: Recognize steam, epic, ps4/psn, xbox and switch platform IDs; reject unknown platforms and nonnumeric Steam IDs rather than resolve names.
+- M0: Reject configured ballchasing request intervals below 0.5 seconds to preserve the specified two-requests-per-second limit.
+- M0: Offline doctor treats absent player settings as warnings as well as missing credentials, so a fresh checkout is diagnosable without crashing.
+- M1: Add optional `BALLCHASING_BASE_URL` with the specified production default to reconcile the fixed API contract with the rule against hardcoded API base URLs.
+- M1: Require both team goals and each trio player's core object with numeric score; allow other missing stats as null so result and impact ranking remain grounded while sparse optional stats are not invented.
+- M1: Reject future-dated replays as outside the freshness window; allow the cutoff itself.
+- M1: Ignore a replay if its list and detail dates disagree, rather than potentially selecting a non-newest match from inconsistent ordering data.
+- M1: Selection consults a small storage protocol and defaults to no duplicate writes; M2 must implement persistent status/attempt semantics and M4 must explicitly enable duplicate recording only for real runs.
+- M2: Split schema initialization into `store_schema.py` to keep the storage module maintainable and near the specified file-size limit.
+- M2: Add a unique partial index on non-null post tweet IDs so SQLite enforces the no-duplicate-posts rule; live success must provide an ID.
+- M2: Provide SQLite read-only mode for previews, and reject unsupported schema versions rather than silently changing them.
+- M2: Reserve each AI attempt before calling the provider, using `analysis_failed` plus `reason=analysis_in_progress`; this blocks another upload during an in-flight call without adding a new status. A crash leaves it guarded for manual inspection, and the attempt counts toward the retry cap.
+- M2: In-flight analysis blocks duplicate selection but does not mark another upload skipped yet, because the current attempt may fail and need a retry.
+- M2: An allowed retry on another upload reuses the original match row and its attempt count; callers must use the row's returned replay ID. Conflicting legacy retry rows fail closed for inspection.
+- M2: Split reusable store timestamp/error helpers and delivery transitions into separate modules to keep each file near the size limit while exposing one `Store` interface.
+- M2: Confirmed post failures return to `generated`; ambiguous outcomes remain `posting` with `posting_unknown` and block all new live posts. This safety deviation from retrying every failure avoids duplicating a post that may have succeeded.
+- M2: Add nullable result/score columns to the replay schema because the specified history output requires data absent from the supplied schema; retain idempotent initialization for earlier version-1 databases.
+- M2: Post-failure callers must explicitly declare whether the outcome is known; no default permits accidentally retrying an ambiguous request.
+- M3: Ask for a boost/demo statistic only when one is present, resolving the conflict between requiring such a statistic and never inventing missing values.
+- M3: Add optional `ANTHROPIC_BASE_URL` and `GEMINI_BASE_URL` to reconcile their specified defaults with the prohibition on hardcoded API base URLs.
+- M3: Require the configured hashtag to be a single Unicode word-style hashtag (or empty), preventing configured URLs or mentions from bypassing tweet sanitization.
+- M3: Retry once only after invalid generated text; provider errors propagate after their HTTP-level retries so 400/401/403 never trigger another generation request. No fallback text is generated.
+- M3: Reject non-English `TWEET_LANGUAGE` values rather than silently ignoring them, since English is a locked output requirement.
+- M3: OpenCode provider token-rate limits interrupted tool execution repeatedly; continued independent work and reran all acceptance checks successfully.
+- M4: Keep lock handling in `run_lock.py` so pipeline orchestration remains small; only remove a lock on exit when its ownership token still matches.
+- M4: Add nullable cached player names and manual-delivery timestamp so cached tweets can be revalidated and failed local delivery retried without AI; migrate existing version-1 databases idempotently.
+- M4: Disallow live delivery of mock-generated tweets; the mock provider is reserved for tests, demos and previews.
+- M4: Retry an undelivered manual-mode generated row before selecting a new replay, preventing a local file failure from stranding cached text.
+- M4: Dry runs and previews consult an existing database read-only and never write it; repeated previews of an unconsumed match may call AI again because preview is explicitly required not to persist state.
+- M4: OpenCode provider token-rate limits interrupted tool execution repeatedly; resumed independent work and reran acceptance tests successfully.
+- M5: Exercise scheduler registration with mocked cmdlets and real `-WhatIf`; do not create or remove a persistent Windows task during development.
+- M5: Doctor checks clipboard by reading and discarding its contents, never overwriting or displaying them; offline is the default and performs no network requests.
+- M5: Doctor uses ballchasing's documented authenticated ping endpoint, rather than consuming a replay-list request.
+- M5: Verified official X pay-per-use pricing on 2026-10-30; document the dated price and source, not prices in code.
+- M5: OpenCode provider token-rate limits interrupted tool execution repeatedly; resumed independent work and reran the relevant acceptance checks successfully.
+- M6: Do not attempt an authenticated real-data smoke test without a token, configured trio and installed model; use offline checks and explicitly report the unmet acceptance condition instead of fabricating results.
+- M6: Compare both known GUID and Rocket League ID fields (case-insensitively) when deduplicating and reserving; fail closed on conflicting retry identifiers. Separate uploads with no shared match identifier cannot be linked reliably.
+- M6: Split the reusable match-identity SQL predicate into `store_identity.py` to keep storage modules manageable.
+- M6: OpenCode provider token-rate limits interrupted tool execution repeatedly; resumed independent work and reran relevant tests.
+- M6: Before credentials were supplied, M6 remained blocked and was not checkpointed; completion was recorded only after a real-data non-posting preview passed.
+- M6: On explicit request to configure services, create `.env` only if absent, leave player IDs/aliases blank until supplied privately, retain `POST_TO_X=false`, and install the specified default Ollama model.
+- M6: Initial cold Ollama generation failed once; a warm provider request and full synthetic recap succeeded. Initially used a temporary longer timeout for the smoke test; afterward changed only the unchanged timeout line in the user-edited `.env`.
+- M6: Filled only blank alias fields with neutral `Player One`, `Player Two`, and `Player Three`; preserve user-provided credentials and IDs, and allow aliases to be customized later.
+- M6: An initial preview found no eligible replay; a separate listing found no shared replay within 48 hours. Used a temporary 30-day override for the non-posting smoke test without changing the user's freshness setting, which was later observed to be 480 hours.
+- M6: The first real-data 30-day preview returned AI exit 4 without writing the DB or posting. Improve exact-score prompting and secret-safe failure categorization before at most one further smoke attempt.
+- M6: Validation failures log only an allow-listed category, never generated text, player identifiers or provider exception details.
+- M6: Set the local request timeout to 120 seconds after the default timed out during the first cold model load; preserve the user's credentials and existing freshness setting.
+- Post-M6: The user enabled X posting and reported a confirmed failure; do not change `.env`, resend the tweet, or assume the cause because the prior log omitted the HTTP status.
+- Post-M6: Log only validated X HTTP status codes and fixed, allow-listed guidance; never log raw response bodies, arbitrary exception messages, credentials or tweet text.
+- Post-M6: Verify configured OAuth1 signing locally without sending a request; successful signing does not prove credentials, permissions or billing are valid.
+- Post-M6: OpenCode provider token-rate limits interrupted tool execution; continued independent work and reran the relevant tests. No live X request was made.
+- Post-M6: A repeated user-reported HTTP 403 has multiple possible causes. Read only documented, strictly allow-listed X problem types from future error responses; never retain or log free-form response details or credentials.
+- Post-M6: X's official authentication mapping lists OAuth 1.0a user context for `POST /2/tweets`; do not switch the user's auth mode or infer that OAuth1 itself caused the 403.
+- Post-M6: OpenCode provider token-rate limits interrupted execution repeatedly; independent work and offline checks were completed without sending an X request.

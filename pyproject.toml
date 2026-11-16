@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rl-analyzer"
+version = "0.1.0"
+description = "Daily Rocket League trio recap CLI"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31", "requests-oauthlib>=1.3", "python-dotenv>=1.0", "pyperclip>=1.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"

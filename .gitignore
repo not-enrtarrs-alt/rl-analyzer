@@ -1,0 +1,19 @@
+.env
+.venv/
+data/
+logs/
+out/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# local / OS clutter
+*.log
+*.sqlite3
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,716 @@
+# Task: Build `rl-analyzer` — Daily Rocket League Trio Tweet Bot
+
+## Objective
+
+Build a Python 3.11+ CLI application in this repository that runs once per day on Windows, finds the most recent eligible 3v3 Rocket League replay where a fixed trio played on the same team using the ballchasing.com API, extracts scoreboard/boost/demo stats, asks a configurable AI provider to write one funny recap tweet, and either posts it to X or delivers it to a file + clipboard. It must never analyze the same match twice and must fail safely.
+
+The app is built from scratch. Build it, test it, document it, and leave it runnable.
+
+## Locked decisions — do not re-litigate
+
+| Area | Decision |
+|---|---|
+| Language / platform | Python 3.11+, Windows local, SQLite, pytest |
+| Trio | One fixed trio, configured by ballchasing profile URLs/IDs, **not** by name |
+| Replay selection | Newest replay within a configurable freshness window (default 48h) where all three are on the **same team**, 3v3 only, playlist allow-list |
+| Multiple new games | Analyze/post the latest only; leave older games eligible for later runs |
+| No new game | Exit quietly, exit code 0 |
+| Dedupe | By `match_guid`/`rocket_league_id`, fallback `replay_id`; never call AI twice for the same match |
+| AI | Provider-agnostic: Ollama (default), OpenAI, Anthropic, Gemini; plus a `mock` provider for tests |
+| Tweet | English, ≤280 weighted characters, emoji allowed, `#RocketLeague` appended, no URLs, no @mentions, no images, no threads/replies |
+| Tweet content | Funny recap with light trash talk; mention the standout and roast one underperformer; naming all three is not required |
+| Stats | Per-player goals/assists/saves/shots/score/shooting%/demos/boost, plus trio team totals and result/score |
+| Posting | X API v2 `POST /2/tweets`; OAuth 1.0a default, OAuth2 bearer fallback; **`POST_TO_X=false` by default** |
+| Manual mode | Write `out/tweet.txt`, print it, copy to clipboard |
+| Schedule | Windows Task Scheduler daily at **19:00 local** |
+| Rate guard | 20-hour cooldown between successful posts/generations; `--force` overrides |
+| AI failure | One shorten retry; then skip posting. **No template fallback.** |
+| Post failure | Keep generated text and retry posting next run without re-analyzing |
+| Docs | Full resumable docs: `PLAN`, `PROGRESS`, `DECISIONS`, `HANDOFF`, `TOOLNOTES`, `SPEC`, setup guides |
+
+## Session start protocol
+
+Do this every session before changing anything:
+
+1. Read `docs/PROGRESS.md`, `docs/HANDOFF.md`, `docs/DECISIONS.md`, `docs/PLAN.md`, and `docs/TOOLNOTES.md` if they exist.
+2. Inspect the repository tree and run `pytest -q` if tests exist.
+3. If docs and code disagree, the code is the source of truth; log the mismatch in `docs/DECISIONS.md`.
+4. Redo environment discovery below even on resume.
+5. Report in two lines: current milestone/sub-step, and what you will do next. Then continue without waiting for approval.
+
+If the repo is empty, this is a fresh start. Begin at M0.
+
+## Step 0: environment discovery
+
+Write findings to `docs/TOOLNOTES.md`:
+
+- OS, Python version, venv location, installed packages.
+- Whether `.env` exists and which credential groups are present (never print secret values).
+- Whether Ollama is installed/running and whether the configured model is present.
+- Whether network access to `ballchasing.com` and `api.x.com` works.
+- Whether the Windows Task Scheduler cmdlets are available.
+
+Do not require live credentials to build or test. Use mocks and fixtures.
+
+## Working rules and anti-stall
+
+- Work on **one sub-step at a time**. A sub-step is one module or one small feature plus its tests.
+- After each sub-step, append one line to `docs/PROGRESS.md`: milestone, sub-step, status, next sub-step.
+- Run the relevant tests after each logic change.
+- Never end a turn immediately after a tool call. End with a short text message: what you did, whether it worked, and the next sub-step.
+- If a tool or command fails twice, log it in `docs/DECISIONS.md`, skip to the next independent sub-step, and mention it.
+- On ambiguity, choose the simplest option consistent with this spec, log the decision and reason in `docs/DECISIONS.md`, and continue.
+- Keep files under ~300 lines. Split modules rather than growing them.
+- Use type hints, docstrings, clear names, and UTC internally.
+- Do not print, log, or commit secrets.
+- Do not rewrite working files wholesale; make narrow edits.
+- Do not add features beyond this spec.
+
+## Architecture and file layout
+
+Create exactly this structure (names may be adjusted only if a strong reason is logged):
+
+```
+rl-analyzer/
+  pyproject.toml
+  .env.example
+  .gitignore
+  README.md
+  src/rl_analyzer/
+    __init__.py
+    __main__.py
+    cli.py
+    config.py
+    logging_setup.py
+    models.py
+    ballchasing.py
+    select.py
+    stats.py
+    ai/
+      __init__.py
+      base.py
+      prompt.py
+      ollama.py
+      openai.py
+      anthropic.py
+      gemini.py
+      mock.py
+    tweet.py
+    store.py
+    delivery.py
+    x_client.py
+    pipeline.py
+  tests/
+    conftest.py
+    fixtures/replay_list.json
+    fixtures/replay_detail.json
+    fixtures/replay_2v2.json
+    fixtures/replay_split_team.json
+    test_config.py
+    test_ballchasing.py
+    test_select.py
+    test_stats.py
+    test_tweet.py
+    test_store.py
+    test_ai.py
+    test_x_client.py
+    test_delivery.py
+    test_pipeline.py
+  scripts/
+    run_daily.ps1
+    install_task.ps1
+    uninstall_task.ps1
+  docs/
+    PLAN.md
+    PROGRESS.md
+    DECISIONS.md
+    HANDOFF.md
+    TOOLNOTES.md
+    SPEC.md
+    SETUP_BALLCHASING.md
+    SETUP_AI.md
+    SETUP_X.md
+    MANUAL_TEST.md
+  data/          (gitignored)
+  logs/          (gitignored)
+  out/           (gitignored)
+```
+
+Use synchronous code. No async, no web server, no web UI.
+
+Recommended dependencies: `requests`, `requests-oauthlib`, `python-dotenv`, `pyperclip`, `pytest` (dev). Do not add a heavy framework or SDK.
+
+## Configuration
+
+Create `.env.example` with these variables and comments. Load `.env` from the repo root with `python-dotenv`.
+
+```bash
+# --- ballchasing ---
+BALLCHASING_TOKEN=
+PLAYER_1_ID=steam:00000000000000000
+PLAYER_2_ID=epic:00000000000000000000000000000000
+PLAYER_3_ID=ps4:ExampleGamertag
+PLAYER_1_ALIAS=Player One
+PLAYER_2_ALIAS=Player Two
+PLAYER_3_ALIAS=Player Three
+MAX_REPLAY_AGE_HOURS=48
+ALLOWED_PLAYLISTS=ranked-standard,unranked-standard,private,tournament
+MAX_CANDIDATES_TO_INSPECT=10
+BALLCHASING_MIN_INTERVAL_SECONDS=0.6
+REQUEST_TIMEOUT_SECONDS=30
+
+# --- AI ---
+AI_PROVIDER=ollama
+AI_TEMPERATURE=0.8
+AI_MAX_OUTPUT_TOKENS=160
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-3-5-haiku-latest
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
+
+# --- tweet ---
+TWEET_LANGUAGE=en
+TWEET_HASHTAG=#RocketLeague
+TWEET_MAX_WEIGHTED_LEN=280
+TWEET_TARGET_MAX_CHARS=240
+TWEET_ALLOW_EMOJI=true
+
+# --- posting ---
+POST_TO_X=false
+X_AUTH_MODE=oauth1
+X_API_BASE_URL=https://api.x.com
+X_API_KEY=
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_SECRET=
+X_OAUTH2_USER_TOKEN=
+COOLDOWN_HOURS=20
+MANUAL_OUTPUT_DIR=out
+CLIPBOARD_ENABLED=true
+
+# --- storage / logging ---
+DATABASE_PATH=data/rl_analyzer.sqlite3
+LOG_DIR=logs
+LOG_LEVEL=INFO
+```
+
+Configuration rules:
+
+- Exactly three players, unique normalized IDs, aliases non-empty.
+- Accept raw IDs (`steam:123`, `epic:abc`, `ps4:Name`) and profile URLs (`https://ballchasing.com/player/steam/123`).
+- Normalize platform aliases: `psn` → `ps4`; lowercase platform and non-Steam IDs; keep Steam digits unchanged.
+- Reject names, empty IDs, unknown platforms, duplicate players.
+- Provider-specific credentials are required only for that provider.
+- X credentials are required only when `POST_TO_X=true`.
+- `TWEET_HASHTAG` must start with `#` or be empty.
+- `MAX_REPLAY_AGE_HOURS`, `COOLDOWN_HOURS`, and `MAX_CANDIDATES_TO_INSPECT` must be positive.
+- `doctor --offline` must report missing credentials as warnings, not crash.
+- Never log secret values; mask everything except the last 4 characters if needed.
+
+## Data model
+
+SQLite with idempotent schema creation and a `meta` table for `schema_version`.
+
+```sql
+CREATE TABLE IF NOT EXISTS replays (
+  replay_id TEXT PRIMARY KEY,
+  match_key TEXT NOT NULL,          -- match_guid, else rocket_league_id, else replay_id
+  match_guid TEXT,
+  rocket_league_id TEXT,
+  match_date TEXT NOT NULL,         -- UTC ISO 8601
+  status TEXT NOT NULL,             -- generated | posting | posted | skipped | analysis_failed
+  tweet_text TEXT,
+  tweet_id TEXT,
+  reason TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  provider TEXT,
+  model TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  posted_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_replays_match_key ON replays(match_key);
+CREATE INDEX IF NOT EXISTS idx_replays_status ON replays(status);
+CREATE INDEX IF NOT EXISTS idx_replays_match_date ON replays(match_date);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  replay_id TEXT NOT NULL,
+  tweet_id TEXT,
+  text TEXT NOT NULL,
+  posted_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+```
+
+Rules:
+
+- `match_key` is the canonical dedupe key. Same match uploaded twice with different replay IDs must not be analyzed twice.
+- `generated` means a valid tweet exists but has not been posted live. `posted` means live post succeeded. `posting` is an in-flight guard.
+- `analysis_failed` rows may be retried only while `attempts < 2`; then mark `skipped` with `reason=ai_failed`.
+- `skipped` is terminal; reasons include `expired`, `duplicate_match`, `posting_unknown`, `ai_failed`.
+- Store `meta.last_success_at` after a successful live post or manual delivery. Cooldown is based on the later of `meta.last_success_at` and the latest `posts.posted_at`.
+- Never store duplicate `posts` rows for the same tweet.
+
+## Pipeline
+
+Implement `python -m rl_analyzer run` as:
+
+1. Acquire a lock file `data/run.lock` (atomic create, write PID/time). If a fresh lock exists, exit 0 with a log message. Remove the lock on exit. Remove stale locks older than 2 hours.
+2. Load and validate config. Initialize DB and logging.
+3. **Cooldown:** if `now - last_success_at < COOLDOWN_HOURS` and `--force` was not passed, log and exit 0.
+4. **Pending live post:** if `POST_TO_X=true`, look for the newest row with `status=generated`. If it exists:
+   - If still within the freshness window, attempt to post the cached `tweet_text`; do not call the AI again.
+   - On success, mark `posted`, record the post, set `last_success_at`, deliver a copy to `out/`, exit 0.
+   - On failure, leave `generated`, log, exit 5.
+   - If expired, mark `skipped` with `reason=expired_before_post` and continue.
+5. **Select a candidate** using the algorithm below. If none, log and exit 0.
+6. Fetch replay detail and extract stats. Validate; if invalid, skip and try the next candidate up to the cap.
+7. Build the AI payload and call the configured provider.
+8. Sanitize, validate, and finalize the tweet. If invalid after one shorten retry, mark `analysis_failed` and exit 4. Do not post a template.
+9. Persist a `generated` row with the exact final text before attempting delivery.
+10. If `POST_TO_X=true`: set `status=posting`, post, then mark `posted` and set `last_success_at`. On failure, set back to `generated`, log, exit 5.
+11. If manual mode (`POST_TO_X=false`): write files, copy to clipboard, set `last_success_at`, leave `generated`, exit 0.
+12. `--dry-run` performs steps 2, 5–8, then delivers to file/clipboard/console **without writing DB or posting**, and without cooldown.
+
+`preview` is like `--dry-run` but may accept `--replay-id` to inspect a specific replay. It never writes DB or posts.
+
+`demo` runs the full extraction/finalization/delivery path against `tests/fixtures/replay_detail.json` with the `mock` AI provider, no network, no DB, and writes `out/demo_tweet.txt`. It must work with no `.env` and no credentials.
+
+## Ballchasing API contract
+
+Base URL: `https://ballchasing.com/api`.
+
+Authentication header:
+
+```
+Authorization: <BALLCHASING_TOKEN>
+```
+
+Do **not** prefix with `Bearer`.
+
+### List/filter replays
+
+```
+GET /replays
+  ?player-id=<platform:id>
+  &replay-date-after=<RFC3339 UTC>
+  &count=200
+  &sort-by=replay-date
+  &sort-dir=desc
+```
+
+Query each of the three players **separately**, then intersect replay IDs client-side. This avoids ambiguity about multiple `player-id` filter semantics. Throttle at least `BALLCHASING_MIN_INTERVAL_SECONDS` between requests.
+
+Response shape:
+
+```json
+{
+  "count": 7,
+  "list": [
+    {
+      "id": "969c37e6-f5c7-41bf-a0c0-21922df74469",
+      "date": "2021-04-12T01:26:47+02:00",
+      "playlist_id": "private",
+      "playlist_name": "Private",
+      "duration": 394,
+      "overtime": true,
+      "map_name": "Utopia Coliseum (Dusk)",
+      "blue": {
+        "name": "TEAM ENVY",
+        "goals": 1,
+        "players": [
+          { "name": "mist", "id": { "platform": "steam", "id": "76561198245238200" }, "score": 526 }
+        ]
+      },
+      "orange": { "...": "same shape" }
+    }
+  ]
+}
+```
+
+### Replay detail
+
+```
+GET /replays/{id}
+```
+
+Important fields and paths:
+
+- `id`, `match_guid`, `rocket_league_id`, `date`, `created`
+- `status` — require `"ok"`
+- `team_size` — require `3`
+- `playlist_id`, `playlist_name`
+- `map_name`, `duration`, `play_duration`, `overtime`, `overtime_seconds`
+- `blue` / `orange`, each with:
+  - `name`
+  - `players[]` with `name`, `id.platform`, `id.id`, `mvp` (may also be in `stats.core.mvp`)
+  - `stats.core` — `goals`, `assists`, `saves`, `shots`, `score`, `shooting_percentage`, `mvp`
+  - `stats.boost` — `bpm`, `avg_amount`, `time_zero_boost`
+  - `stats.demo` — `inflicted`, `taken`
+  - `stats` team totals — same `core`, `boost`, `demo` paths
+
+Rate limits: 2 requests/second, 500 list requests/hour, 1000 detail requests/hour for non-patrons. Implement a shared throttle and retry on 429/5xx with exponential backoff (1s, 2s, 4s) and `Retry-After` support. Handle 401/403 with a clear "check BALLCHASING_TOKEN" error.
+
+Do not download replay files. Use only the JSON stats endpoints.
+
+## Selection algorithm
+
+1. `cutoff = now_utc - MAX_REPLAY_AGE_HOURS`.
+2. Fetch each player's replays with `replay-date-after=cutoff`, `count=200`, sorted newest first.
+3. Intersect replay IDs across all three lists. A replay must appear in all three.
+4. Remove replays already consumed in the DB:
+   - `generated`, `posting`, `posted`, `skipped` are consumed.
+   - `analysis_failed` is consumed only if `attempts >= 2`.
+5. Remove replays whose `match_key` is already consumed by another row.
+6. Sort candidates by `date` descending.
+7. Inspect up to `MAX_CANDIDATES_TO_INSPECT` candidates by fetching detail. A candidate is eligible only if:
+   - `status == "ok"`
+   - `team_size == 3`
+   - `playlist_id` is in `ALLOWED_PLAYLISTS`
+   - all three normalized player IDs are in the **same** team (`blue.players` or `orange.players`)
+   - `date` is within the freshness window
+   - required core stats exist
+8. Select the newest eligible candidate. If none, exit 0 quietly.
+9. Do **not** mark older unposted games as skipped. They remain eligible until they fall outside the freshness window.
+10. If a candidate is a duplicate upload of a consumed match, record that replay as `skipped` with `reason=duplicate_match` and continue.
+
+Date handling: parse ISO 8601 with offset. If the date is naive, assume UTC and log a warning. Compare in UTC. Store `match_date` as UTC ISO 8601.
+
+## Stats extraction
+
+Identify the trio team as the team containing all three players. The opponent is the other team.
+
+Build this payload (null for missing stats; never invent values):
+
+```json
+{
+  "match": {
+    "date_utc": "2026-10-30T18:04:00Z",
+    "playlist": "Ranked Standard",
+    "map": "DFH Stadium",
+    "duration_seconds": 312,
+    "overtime": false,
+    "result": "win",
+    "score": { "trio": 3, "opponents": 2 }
+  },
+  "players": [
+    {
+      "alias": "Ali",
+      "in_game_name": "Ali",
+      "goals": 2,
+      "assists": 1,
+      "saves": 3,
+      "shots": 5,
+      "score": 520,
+      "shooting_pct": 40.0,
+      "demos_inflicted": 2,
+      "demos_taken": 1,
+      "boost_bpm": 410,
+      "avg_boost": 48.2,
+      "time_zero_boost_seconds": 35.4,
+      "mvp": true,
+      "standout": true
+    }
+  ],
+  "team_totals": {
+    "goals": 3,
+    "assists": 2,
+    "saves": 7,
+    "shots": 12,
+    "score": 1100,
+    "demos_inflicted": 5,
+    "demos_taken": 3,
+    "boost_bpm": 1200,
+    "avg_boost": 145.0,
+    "time_zero_boost_seconds": 90.2
+  }
+}
+```
+
+Rules:
+
+- Include exactly the three trio players, sorted by `score` descending.
+- `alias` comes from config; fall back to the replay name.
+- Compute `result` as `win`, `loss`, or `draw` from trio goals vs opponent goals.
+- `standout` is the player with the highest impact: highest score, then goals, then saves.
+- Mark the lowest-impact player with `"underperformer": true` for the AI to roast. Do not add `underperformer: true` to more than one player.
+- Round floats to one decimal place.
+- If a stat is missing, use `null` and instruct the AI not to mention it.
+- Do not include opponents' names or stats in the payload.
+
+## AI contract
+
+Create a provider interface:
+
+```python
+class AIProvider:
+    def generate(self, system: str, user: str) -> str: ...
+```
+
+Providers:
+
+- **Ollama**: `POST {OLLAMA_BASE_URL}/api/chat` with `{"model": ..., "messages": [...], "stream": false, "options": {"temperature": ..., "num_predict": ...}}`.
+- **OpenAI**: `POST {OPENAI_BASE_URL}/chat/completions`.
+- **Anthropic**: `POST https://api.anthropic.com/v1/messages` with `x-api-key` and `anthropic-version`.
+- **Gemini**: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=...`.
+- **Mock**: deterministic, test-only provider. Never used as a fallback.
+
+System prompt requirements:
+
+> You write ONE tweet in English recapping a Rocket League match for a private friend group. Voice: funny recap with light, playful trash talk. Use only the stats in the JSON. Never invent numbers. Mention the result and score. Name the standout player and roast one underperformer using the provided aliases. Include at least one boost or demo stat. Keep it under 240 weighted characters; emoji count as 2. Use at most 2 emoji. Do not use hashtags, @mentions, URLs, line breaks, quotes, or markdown. Do not name opponents. Do not write anything except the tweet text.
+
+User prompt: the stats JSON above, then a short instruction to write the tweet now.
+
+Provider behavior:
+
+- Temperature `AI_TEMPERATURE`; max output tokens `AI_MAX_OUTPUT_TOKENS`.
+- Retry 429/5xx with backoff; do not retry 400/401/403.
+- Raise a typed `AIError` on failure.
+- Never include secrets in errors.
+- The `mock` provider returns a valid canned tweet built from the payload, for tests and `demo` only.
+
+## Tweet rules and validation
+
+Finalization steps:
+
+1. Strip Markdown fences, surrounding quotes/backticks, and preambles such as `Tweet:` or `Here is your tweet:`.
+2. Collapse all whitespace and newlines to single spaces.
+3. Remove URLs.
+4. Remove `@mentions`.
+5. Remove all hashtags; append exactly one configured hashtag at the end with one space.
+6. Trim to a single trailing punctuation mark if duplicated.
+7. Reject empty output, refusals (`I can't`, `I cannot`, `I'm sorry` at the start), or output under 20 characters.
+8. Enforce `≤ TWEET_MAX_WEIGHTED_LEN` using a conservative weighted counter: most characters 1, emoji and CJK 2, URLs 23. Because URLs are removed, only emoji/CJK matter.
+9. Require the score string `"<trio>-<opponents>"` (for example `3-2`) to appear in the text. If missing, retry once.
+10. Require at least one configured alias or replay name to appear. If missing, retry once.
+11. If the tweet is over length, retry once with a shorter instruction. If still invalid, mark `analysis_failed` and do not post.
+12. Do not add a template fallback.
+
+Emoji: allow at most 2. Instruct the AI accordingly. Do not fail solely on emoji count, but strip extras if easy.
+
+## X posting
+
+Implement `XClient.post(text) -> tweet_id`.
+
+- Endpoint: `POST {X_API_BASE_URL}/2/tweets` with JSON `{"text": text}`.
+- OAuth 1.0a default using `requests-oauthlib.OAuth1Session` with `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`.
+- OAuth2 fallback: `X_AUTH_MODE=oauth2` with `X_OAUTH2_USER_TOKEN` sent as a Bearer token. Tokens expire; document manual refresh.
+- Success: HTTP 201 with `{"data": {"id": "..."}}`.
+- Handle 401/403, 429, and 5xx with clear errors. Do not retry a post automatically inside the same run; leave the replay `generated` for the next run.
+- Never log tokens or the Authorization header.
+- No media upload, no replies, no threads, no quote posts.
+- Do not add URLs to tweets. As of 2026, X charges `$0.015` per text post and `$0.20` per post containing a URL; there is no free tier for new developers. One text-only post/day is roughly `$0.45/month`. Verify current pricing in `docs/SETUP_X.md`; do not hardcode prices in code.
+
+## Manual delivery
+
+When `POST_TO_X=false` or `--dry-run`:
+
+- Write `out/tweet.txt` (UTF-8, no BOM) containing only the final tweet text.
+- Write `out/last_run.json` with metadata: replay ID, match key, match URL, match date, result, score, provider, model, timestamps, status. No secrets.
+- Write a timestamped copy under `out/history/`.
+- Print the tweet to the console in a readable block.
+- Copy to the Windows clipboard with `pyperclip` when `CLIPBOARD_ENABLED=true`. If clipboard access fails, log a warning and continue.
+- On live success, also archive the posted text under `out/posted/`.
+
+## Cooldown, dedupe, and failure handling
+
+- Cooldown: `COOLDOWN_HOURS` (default 20) since `meta.last_success_at` or the latest live post. Bypassed by `--force`.
+- `--dry-run` and `preview` bypass cooldown and do not mutate DB.
+- Dedupe by `match_key`, not just `replay_id`.
+- A consumed match must never trigger another AI call.
+- If a `generated` row exists and is still fresh, reuse its `tweet_text`; never regenerate.
+- If a `generated` row is expired, mark `skipped` and move on.
+- If a post fails, leave the row `generated` and exit 5.
+- If the process crashes mid-post, a `posting` row must block automatic reposting. Log a warning and require manual inspection; `doctor` must report it.
+- AI failure or over-length output: mark `analysis_failed`, increment attempts, do not post. Retry next run only while attempts < 2; then `skipped`.
+- No new eligible replay: exit 0 and log clearly.
+- Exit codes: `0` success/no-op, `2` config error, `3` ballchasing error, `4` AI error, `5` posting error, `6` lock/unknown.
+
+## CLI
+
+Implement with `argparse`:
+
+```bash
+python -m rl_analyzer run [--dry-run] [--force] [--verbose]
+python -m rl_analyzer preview [--replay-id ID] [--verbose]
+python -m rl_analyzer demo
+python -m rl_analyzer doctor [--offline] [--live]
+python -m rl_analyzer history [--limit 10]
+```
+
+- `run`: full daily pipeline.
+- `preview`: select/analyze without DB writes or posting; useful before enabling live mode.
+- `demo`: offline end-to-end proof using the bundled fixture and mock AI.
+- `doctor`: validate Python version, config, player IDs, DB, output dirs, provider settings, X credentials presence, Ollama model availability, and clipboard. `--offline` skips network; `--live` checks ballchasing and Ollama. Never post.
+- `history`: print recent rows (date, result, score, status, tweet ID, text preview).
+
+## Windows scheduling
+
+Create `scripts/run_daily.ps1`:
+
+- Resolve the repo root from `$PSScriptRoot`.
+- Run `.venv\Scripts\python.exe -m rl_analyzer run`.
+- Redirect stdout/stderr to `logs/scheduler.log` with timestamps.
+- Exit with the Python exit code.
+
+Create `scripts/install_task.ps1` using `Register-ScheduledTask`:
+
+- Task name: `RL Analyzer Daily`.
+- Trigger: daily at **19:00 local**.
+- Action: `scripts/run_daily.ps1` via PowerShell, working directory = repo root.
+- Settings: `StartWhenAvailable`, `MultipleInstances IgnoreNew`, execution time limit 1 hour.
+- Re-running the installer must update, not duplicate, the task.
+- Create `scripts/uninstall_task.ps1`.
+
+Document both the PowerShell installer and a manual `schtasks` alternative in `README.md`.
+
+## Testing
+
+Use `pytest`. All tests must run without network access and without real credentials. Mock HTTP with `unittest.mock` or a small fake session.
+
+Required tests:
+
+- Config: parse raw IDs and profile URLs; normalize platforms; reject duplicates/names/unknown platforms; provider credential validation.
+- Ballchasing: auth header, query params, per-player intersection, throttling, 429/5xx retry, 401 mapping.
+- Selection: newest eligible; 2v2 rejected; split-team rejected; wrong playlist rejected; old replay rejected; duplicate `match_key` skipped; older backlog not marked.
+- Stats: correct team identification, score/result, per-player mapping, team totals, missing stats, standout/underperformer.
+- Tweet: weighted length with emoji/CJK; hashtag appended exactly once; URLs/@/Markdown stripped; over-length retry; refusal detection; score/alias validation.
+- Store: schema idempotency, status transitions, dedupe by `match_key`, cooldown, pending `generated` reuse, `analysis_failed` retry cap, `posting` guard.
+- AI: prompt contains stats; request payloads for Ollama/OpenAI/Anthropic/Gemini; mock provider; error mapping; no secrets in logs.
+- X: OAuth1 signing (mock), bearer fallback, 201 success, 401/429/5xx errors.
+- Delivery: files written, UTF-8, clipboard called, history archive.
+- Pipeline: no candidate → no AI call; posted match never analyzed; AI failure → no post and no template; post failure → cached text reused next run; cooldown blocks; dry-run no DB writes; `demo` works offline.
+
+Add `tests/fixtures/replay_detail.json` with a realistic 3v3 replay containing three players whose IDs match the test config. Add `replay_2v2.json` and `replay_split_team.json` for rejection tests.
+
+## Documentation
+
+Create and keep updated:
+
+- `README.md`: what it does, quickstart, commands, scheduling, folder map, troubleshooting.
+- `docs/SPEC.md`: this product spec, condensed.
+- `docs/PLAN.md`: milestones and current plan.
+- `docs/PROGRESS.md`: one line per completed sub-step.
+- `docs/DECISIONS.md`: decisions and one-line reasons, including deviations.
+- `docs/HANDOFF.md`: resume instructions, verified vs untested, known bugs, next step.
+- `docs/TOOLNOTES.md`: environment and tool capabilities.
+- `docs/SETUP_BALLCHASING.md`: account/token, finding profile IDs, upload requirement, visibility, rate limits.
+- `docs/SETUP_AI.md`: Ollama install/pull/serve, model config, OpenAI/Anthropic/Gemini alternatives.
+- `docs/SETUP_X.md`: developer account, pay-per-use credits, app creation, read/write permissions, OAuth 1.0a keys and access tokens, OAuth2 fallback, cost warning, testing safely.
+- `docs/MANUAL_TEST.md`: checklist with expected results.
+
+Setup guide must state:
+
+- Ballchasing does not automatically ingest games; replays must be uploaded by a player (or someone with the replay file). Private/unlisted replays may not be visible to other accounts.
+- Player IDs come from profile URLs: `https://ballchasing.com/player/<platform>/<id>`.
+- Ollama default: `ollama pull llama3.1:8b`, then `ollama serve`.
+- X: set permissions to **Read and write** before generating the access token; regenerate tokens if permissions change. Keep `POST_TO_X=false` until a deliberate test.
+- X costs money now; verify current pricing before enabling live posting.
+
+## Milestones and acceptance
+
+| # | Scope | Done when |
+|---|---|---|
+| M0 | Repo scaffold, `pyproject.toml`, config loader, logging, CLI skeleton, docs skeleton, `doctor --offline` | `python -m rl_analyzer doctor --offline` runs and reports missing credentials cleanly |
+| M1 | Ballchasing client, selection, stats extraction, fixtures | All selection/stats/ballchasing tests pass |
+| M2 | SQLite store, dedupe, cooldown, status transitions | All store tests pass; duplicate match cannot be analyzed twice |
+| M3 | AI providers, prompt, sanitization, weighted length | All AI/tweet tests pass; over-length and refusal paths skip safely |
+| M4 | Pipeline, manual delivery, X client, `demo` | `python -m rl_analyzer demo` writes a valid tweet; pipeline tests pass |
+| M5 | Windows scheduling scripts, full README, setup docs, `doctor`/`history` | Task installer works; docs complete; `pytest -q` passes |
+| M6 | Optional live smoke test with the user's ballchasing token/Ollama, final polish, handoff | Dry run with real data succeeds; no live X post unless explicitly requested |
+
+A milestone is done only when its acceptance check passes. Do not start the next milestone while the current one fails.
+
+## Definition of done
+
+- `pytest -q` passes with no network access.
+- `python -m rl_analyzer demo` produces `out/demo_tweet.txt` and a valid ≤280-character tweet.
+- `python -m rl_analyzer doctor --offline` gives a clear report; missing credentials are warnings.
+- `python -m rl_analyzer preview` works with a valid ballchasing token and either Ollama or a mock provider.
+- The scheduled task installer is idempotent and documented.
+- Every requirement maps to code or a documented limitation.
+- No secrets, real IDs, or tokens are committed.
+- No live X posts occurred during development.
+- `docs/PROGRESS.md` and `docs/HANDOFF.md` are current.
+
+## Do not
+
+- Do not post to X during development. `POST_TO_X` stays `false` unless the user explicitly asks for a live test.
+- Do not commit `.env`, `data/`, `logs/`, or `out/`; add them to `.gitignore`.
+- Do not use real player IDs, tokens, API keys, or handles; `.env.example` uses placeholders only.
+- Do not resolve players by display name or search; use the configured ballchasing profile IDs.
+- Do not analyze, generate, or post twice for the same `match_key`.
+- Do not add URLs, @mentions, images, threads, replies, or quote posts.
+- Do not use a template fallback when AI generation fails; skip instead.
+- Do not invent, estimate, or round up stats. Use only the JSON payload.
+- Do not exceed 280 weighted characters or post unvalidated text.
+- Do not post more than once per cooldown unless `--force` is passed.
+- Do not mark older unposted games as skipped; keep the backlog.
+- Do not add a web UI, HTTP server, database server, async workers, or Docker.
+- Do not download or parse replay files; use the ballchasing JSON API only.
+- Do not hardcode model IDs, API base URLs, prices, or credentials; keep them configurable.
+- Do not end a turn immediately after a tool call.
+- Do not recreate, restructure, or overwrite working code on resume.
+- Do not add features outside this spec.
+
+## Milestone checkpoints
+
+When a milestone's acceptance check passes:
+
+- Write `docs/CHECKPOINTS/M<N>.md` with: files changed, tests run and results, acceptance evidence, and known limitations.
+- Append the milestone completion to `docs/PROGRESS.md`.
+- Do not start the next milestone until the checkpoint exists.
+
+## Stopping rule
+
+Stop only when:
+
+- a milestone is finished and checkpointed, or
+- you are truly blocked.
+
+Either way, end with the exact line:
+
+```
+NEXT: <next sub-step>
+```
+
+so the user can reply `continue`.
+
+## Handoff protocol
+
+When the user says `wrap up` or `handoff`:
+
+- Write `docs/HANDOFF.md` containing:
+  - Last completed milestone and acceptance result.
+  - What is verified vs. untested.
+  - Known bugs with file/function names.
+  - Deviations from this spec and why.
+  - Conventions the next agent must follow.
+  - Exact next step and the files it will touch.
+- Update `docs/PROGRESS.md`.
+- Do not start a new milestone.
+
+## First-run checklist for the human
+
+1. Copy `.env.example` to `.env`.
+2. Fill `BALLCHASING_TOKEN`, the three player IDs, and aliases.
+3. Install Ollama and run `ollama pull llama3.1:8b`, or configure another provider.
+4. Run `python -m rl_analyzer doctor`.
+5. Run `python -m rl_analyzer preview` and inspect `out/tweet.txt`.
+6. To post live, follow `docs/SETUP_X.md`, set `POST_TO_X=true`, and run once with `--force`.
+7. Install the daily task: `powershell -ExecutionPolicy Bypass -File scripts/install_task.ps1`.
+
+## Final instruction
+
+Start at M0. Build the app, run the tests, update the docs, and leave the repo in a runnable state. Do not ask questions; decide, log, and continue.

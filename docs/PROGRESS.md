@@ -1,0 +1,101 @@
+# Progress
+
+- M0 | Project scaffold and plan | done | next: environment notes and configuration
+- M0 | Environment discovery | done | next: Python environment and configuration
+- M0 | Configuration and identity validation | done (28 tests) | next: logging and CLI skeleton
+- M0 | Logging setup | done (2 tests) | next: CLI skeleton and offline doctor
+- M0 | CLI skeleton and offline doctor | done (3 tests) | next: configuration edge-case hardening
+- M0 | Configuration edge-case hardening | done (30 config tests) | next: UTC logging and acceptance checks
+- M0 | UTC logging | done (2 tests) | next: complete acceptance checks and checkpoint
+- M0 | Acceptance and checkpoint | complete (35 tests; offline doctor exit 0) | next: M1 ballchasing client and tests
+- M1 | Session-start discovery and baseline | done (35 tests) | next: ballchasing client and tests
+- M1 | Configurable ballchasing API base | done (31 config tests) | next: ballchasing client and tests
+- M1 | Ballchasing client | done (12 offline HTTP tests) | next: synthetic replay fixtures
+- M1 | Synthetic replay fixtures | done (2 fixture tests) | next: statistics extraction
+- M1 | Trio statistics extraction | done (12 tests) | next: replay selection and dedupe interface
+- M1 | Replay selection and dedupe interface | done (20 tests; 44 selection/stats/client tests total) | next: integrated offline validation
+- M1 | Client-selection-stats integration | done (13 client tests) | next: full M1 acceptance checks
+- M1 | Acceptance and checkpoint | complete (47 M1 tests, 83 total) | next: M2 SQLite schema and store tests
+- M2 | Session-start discovery and baseline | done (83 tests) | next: SQLite schema and idempotent initialization
+- M2 | SQLite schema and idempotent initialization | done (3 tests) | next: dedupe queries and duplicate recording
+- M2 | Persistent match/replay dedupe queries and duplicate recording | done (15 store tests) | next: guarded analysis reservations and retries
+- M2 | Guarded analysis reservations and retries | done (22 store tests; real-store selection integration passes) | next: posting state transitions and cached tweets
+- M2 | Shared store utilities refactor | done (43 store/selection tests) | next: posting state transitions and cached tweets
+- M2 | Posting guards, cached retries and atomic live-post records | done (27 store tests) | next: manual success and cooldown
+- M2 | Manual success, cooldown and corrupt-state guards | done (34 store tests) | next: durable match result metadata
+- M2 | Durable result/score metadata and compatible initialization | done (40 store tests) | next: adversarial integration and acceptance checks
+- M2 | Split store tests by responsibility | done (61 store/selection tests) | next: adversarial integration and acceptance checks
+- M2 | Explicit post-failure certainty guard | done (10 delivery-state tests) | next: adversarial integration and acceptance checks
+- M2 | Concurrent dedupe, rollback, and real-store retry integration | done (64 store/selection tests) | next: unknown-post guard and acceptance checks
+- M2 | Unknown-post guard hardening | done (11 delivery-state tests) | next: full acceptance and checkpoint
+- M2 | Acceptance and checkpoint | complete (64 storage/selection tests, 127 total) | next: M3 AI interface and prompt
+- M3 | Session-start discovery and baseline | done (127 tests) | next: AI interface and prompt
+- M3 | AI interface and constrained prompt | done (3 tests) | next: shared AI HTTP retry/error handling
+- M3 | Configurable Anthropic/Gemini API bases | done (32 config tests) | next: shared AI HTTP retry/error handling
+- M3 | Shared AI HTTP retry and secret-safe errors/logging | done (10 tests) | next: Ollama provider
+- M3 | Ollama provider | done (7 AI tests) | next: OpenAI provider
+- M3 | OpenAI provider | done (11 AI tests) | next: Anthropic provider
+- M3 | Anthropic provider | done (15 AI tests) | next: Gemini provider
+- M3 | Gemini provider | done (19 AI tests) | next: deterministic mock and provider selection
+- M3 | Deterministic mock and explicit provider factory | done (27 AI tests) | next: tweet normalization and weighted validation
+- M3 | Safe single-hashtag configuration | done (33 config tests) | next: tweet normalization and weighted validation
+- M3 | Tweet sanitization and conservative weighted validation | done (19 tests) | next: one validation retry without fallback
+- M3 | One invalid-output retry without template fallback | done (27 tweet tests) | next: adversarial validation and acceptance
+- M3 | Internationalized URL and mock-stat hardening | done (56 tweet/AI tests) | next: boundary and integration checks
+- M3 | Enforce English and valid mock impact markers | done (91 config/AI/tweet tests) | next: final URL safety and acceptance
+- M3 | URL schemes, IPs and Unicode separators | done (30 tweet tests) | next: full acceptance and checkpoint
+- M3 | Acceptance and checkpoint | complete (68 AI/tweet tests, 198 total) | next: M4 manual delivery and tests
+- M4 | Session-start discovery and baseline | done (198 tests) | next: manual delivery and tests
+- M4 | Manual file, metadata, history and clipboard delivery | done (5 tests) | next: X client with mocked HTTP
+- M4 | Cached tweet text-only safety validation | done (37 tweet tests) | next: X client with mocked HTTP
+- M4 | X client with OAuth1/OAuth2 and uncertain-outcome guard | done (15 mocked HTTP tests; no live posts) | next: run lock
+- M4 | Atomic run lock and stale-lock recovery | done (4 tests) | next: pipeline and preview integration
+- M4 | Cached player names and manual-delivery recovery state | done (42 store tests) | next: pipeline integration
+- M4 | Cached manual/live delivery and retry handling | done (6 offline integration tests) | next: pipeline orchestration
+- M4 | Daily pipeline, preview mode and failure handling | done (12 offline pipeline tests) | next: offline demo
+- M4 | Offline fixture/demo extraction and delivery | done (2 tests; no network or DB) | next: CLI wiring
+- M4 | Run, preview and demo CLI wiring | done (19 CLI/demo/pipeline tests) | next: adversarial pipeline checks
+- M4 | Retry caps, uncertain posts, corrupted cache and archive failures | done (18 offline pipeline tests) | next: final acceptance and checkpoint
+- M4 | Record cooldown from actual completion time | done (25 pipeline/delivery integration tests) | next: final acceptance and checkpoint
+- M4 | Provider-error log redaction | done (19 pipeline tests) | next: final acceptance and checkpoint
+- M4 | Acceptance and checkpoint | complete (57 M4 tests, 259 total; offline demo 82 weighted characters) | next: M5 Windows scheduling scripts
+- M5 | Session-start discovery and baseline | done (259 tests) | next: Windows scheduling scripts
+- M5 | Windows scheduling scripts | done (3 mocked subprocess tests; installer WhatIf passed) | next: offline doctor
+- M5 | Inspectable analysis reservations | done (31 store tests) | next: offline doctor
+- M5 | Offline/live doctor with DB guards and clipboard check | done (11 doctor/CLI tests) | next: history command
+- M5 | Read-only history command | done (39 history/CLI/store tests) | next: setup guides and README
+- M5 | Ballchasing setup guide | done | next: AI setup guide
+- M5 | AI setup guide | done | next: X setup and verified pricing
+- M5 | X setup and official pricing verification | done | next: condensed spec and manual checklist
+- M5 | Condensed spec and manual test checklist | done | next: complete README
+- M5 | README quickstart, scheduling and troubleshooting | done | next: documentation validation and acceptance
+- M5 | Essential documentation coverage | done (5 tests) | next: full M5 acceptance checks
+- M5 | Documented ballchasing ping and final guide polish | done (16 doctor/CLI/docs tests) | next: checkpoint
+- M5 | Acceptance and checkpoint | complete (276 tests; demo, doctor, history and installer WhatIf passed) | next: M6 optional non-posting smoke test
+- M6 | Session-start discovery and baseline | done (276 tests) | next: safety audit and offline verification
+- M6 | Cross-identifier duplicate-match protection | done (80 identity/selection/store/pipeline tests) | next: remaining safety audit
+- M6 | Case-insensitive retry identity | done (40 identity/store tests) | next: remaining safety audit
+- M6 | Pipeline duplicate-AI regression and fallback limitation | done (10 identity tests) | next: final offline acceptance checks
+- M6 | Final offline checks | done (286 tests; demo, doctor, history, pip check and scheduler WhatIf passed) | next: real-data preview
+- M6 | Real-data smoke acceptance | blocked (no ballchasing token/trio; configured Ollama model absent) | next: configure credentials and run non-posting preview
+- M6 | Configuration session discovery | done (286 tests) | next: prepare safe local configuration
+- M6 | Local .env template | done (player fields blank; posting disabled) | next: install default Ollama model
+- M6 | Default Ollama model and synthetic local recap | done (model available; validated 220-weighted-character recap) | next: configure trio and verify real-data preview
+- M6 | Private ballchasing token and trio IDs | configured by user; neutral aliases supplied | next: non-posting real-data preview
+- M6 | Initial live preview | no eligible replay under the then-active settings; database unchanged | next: temporary 30-day non-posting smoke preview
+- M6 | Temporary 30-day real-data preview | failed safely with AI exit 4; DB unchanged, no post | next: improve safe validation diagnostics and retry once
+- M6 | Exact trio-first score and alias prompting | done (65 AI/tweet tests) | next: secret-safe AI failure diagnostics
+- M6 | Secret-safe validation failure categories | done (86 tweet/pipeline/AI tests) | next: one further 30-day non-posting smoke attempt
+- M6 | Real-data non-posting preview | done (temporary 30-day window; 235 weighted characters; DB unchanged) | next: final offline checks and checkpoint
+- M6 | Local cold-start timeout | configured to 120 seconds; user-set freshness left unchanged (currently 480 hours) | next: final offline checks
+- M6 | Configured offline checks and real-output validation | done (288 tests; pip check; doctor; valid 235-weighted-character preview) | next: M6 checkpoint
+- M6 | Acceptance and checkpoint | complete (real-data non-posting preview; DB unchanged; 288 tests) | next: review output and customize aliases
+- Post-M6 | X failure investigation | baseline done (288 tests; cached tweet valid/fresh; original HTTP status not logged) | next: secret-safe X diagnostics
+- Post-M6 | Structured X failure categories | done (20 X client tests, no live requests) | next: show safe diagnostics in pipeline logs
+- Post-M6 | X HTTP status and safe guidance in failure logs | done (52 X/pipeline tests) | next: verify real OAuth1 signing offline
+- Post-M6 | OAuth1 signing and X troubleshooting | done (21 X client tests; configured credentials signed locally without a request) | next: full offline verification
+- Post-M6 | Offline verification | done (299 tests, pip check; cached tweet preserved; no X request sent) | next: inspect HTTP status if user deliberately retries
+- Post-M6 | Original X rejection cause | blocked (previous log did not include HTTP status) | next: user-controlled retry only if desired
+- Post-M6 | Repeated X 403 investigation | baseline done (299 tests; X problem type not retained) | next: allow-listed X problem diagnostics
+- Post-M6 | Allow-listed X problem diagnostics | done (64 X/pipeline tests; no live requests) | next: full offline verification
+- Post-M6 | Repeated-403 offline verification | done (310 tests; cached tweet retained and fresh; no live X request) | next: inspect safe problem type if X supplies it on a user-chosen retry
